@@ -2,15 +2,34 @@ import {Injectable} from '@angular/core';
 import {Router} from '@angular/router';
 import {AuthService} from '@src/Model/Auth/AuthService';
 import {ConnectivityService} from '@src/Model/Network/ConnectivityService';
+import {McpArgs} from '@src/Model/Mcp/McpArgs';
 import {McpCommand} from '@src/Model/Mcp/McpCommand';
 import {McpCommandBus} from '@src/Model/Mcp/McpCommandBus';
+import {McpNavigation} from '@src/Model/Mcp/McpNavigation';
 import {McpOperationRegistry} from '@src/Model/Mcp/McpOperationRegistry';
 import {McpPlannerHost} from '@src/Model/Mcp/McpPlannerHost';
+import {McpMutationResult} from '@src/Model/Mcp/McpResult';
 import {McpRevisionTracker} from '@src/Model/Mcp/McpRevisionTracker';
 import {PlanManager} from '@src/Model/Planner/PlanManager';
 import {VersionManager} from '@src/Model/Data/VersionManager';
 
-/** APP-01 / APP-04 and the operations commands: what the app is showing, what can be done now, and the state of long-running work. */
+const NAVIGATION_TARGETS = ['home', 'planner', 'map', 'settings', 'account', 'mods', 'mod_editor', 'help', 'about', 'create_version'] as const;
+
+/** Null for pages whose address depends on the game version. */
+const NAVIGATION_URLS: Record<typeof NAVIGATION_TARGETS[number], string | null> = {
+	home: '/',
+	planner: null,
+	map: null,
+	settings: '/settings',
+	account: '/account',
+	mods: '/mods',
+	mod_editor: '/mod-editor',
+	help: '/help',
+	about: '/about',
+	create_version: '/create-version',
+};
+
+/** APP-01, APP-02, APP-04, VER-01 and the operations commands: what the app is showing, moving around it, and the state of long-running work. */
 @Injectable({providedIn: 'root'})
 export class AppCommands
 {
@@ -25,6 +44,7 @@ export class AppCommands
 		private readonly plannerHost: McpPlannerHost,
 		private readonly revisions: McpRevisionTracker,
 		private readonly operations: McpOperationRegistry,
+		private readonly navigation: McpNavigation,
 	)
 	{
 		bus.register(...this.commands(bus));
@@ -76,6 +96,33 @@ export class AppCommands
 				run: () => ({ok: true, kind: 'query', data: bus.describe()}),
 			},
 			{
+				name: 'app.navigate',
+				kind: 'mutation',
+				summary: 'Go to a page of the app and wait until it is usable. The planner and map also open a game version (versionSlug from versions.list).',
+				run: args => this.navigate(args),
+			},
+			{
+				name: 'versions.list',
+				kind: 'query',
+				summary: 'The game versions available, with the slug app.navigate takes, and which one is open.',
+				run: () => {
+					const active = this.versions.activeVersion()?.id ?? null;
+					return {
+						ok: true,
+						kind: 'query',
+						data: {
+							loading: !this.versions.ready(),
+							versions: this.versions.versions().map(version => ({
+								slug: this.versions.urlSlug(version),
+								name: version.name,
+								custom: version.custom,
+								active: version.id === active,
+							})),
+						},
+					};
+				},
+			},
+			{
 				name: 'operations.get',
 				kind: 'query',
 				summary: 'State of a long-running operation by id, or all recent operations.',
@@ -100,6 +147,31 @@ export class AppCommands
 				}),
 			},
 		];
+	}
+
+	private async navigate(args: McpArgs): Promise<McpMutationResult>
+	{
+		const target = args.oneOf('target', NAVIGATION_TARGETS);
+		const expected = NAVIGATION_URLS[target];
+		if (target === 'planner' || target === 'map') {
+			const planId = target === 'planner' ? args.optionalString('planId') : null;
+			await this.navigation.openVersionPage(target, args.optionalString('versionSlug'), planId);
+		} else {
+			await this.navigation.go(expected!);
+		}
+		// Guards redirect instead of failing (signed-out users leave /mods), and the client should hear about it.
+		const url = this.router.url;
+		const redirected = expected !== null && expected !== undefined && !url.startsWith(expected) && (expected !== '/' || url !== '/');
+		return {
+			ok: true,
+			kind: 'mutation',
+			changed: [],
+			warnings: redirected ? [`The app redirected to ${url} instead of ${expected}. Check app_get_capabilities or sign in.`] : [],
+			resultsStale: false,
+			needsRecalculation: false,
+			revisions: {},
+			data: {url, version: this.versions.activeVersion()?.name ?? null, plannerOpen: this.plannerHost.isOpen()},
+		};
 	}
 
 }

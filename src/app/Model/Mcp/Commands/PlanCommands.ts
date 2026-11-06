@@ -3,6 +3,8 @@ import {McpArgs} from '@src/Model/Mcp/McpArgs';
 import {McpCommand} from '@src/Model/Mcp/McpCommand';
 import {McpCommandBus} from '@src/Model/Mcp/McpCommandBus';
 import {McpError} from '@src/Model/Mcp/McpError';
+import {McpNavigation} from '@src/Model/Mcp/McpNavigation';
+import {McpPlannerHost} from '@src/Model/Mcp/McpPlannerHost';
 import {McpEntityRef, McpMutationResult} from '@src/Model/Mcp/McpResult';
 import {McpRevisionTracker} from '@src/Model/Mcp/McpRevisionTracker';
 import {Folder} from '@src/Model/Planner/Folder';
@@ -18,9 +20,12 @@ export class PlanCommands
 		bus: McpCommandBus,
 		private readonly planManager: PlanManager,
 		private readonly revisions: McpRevisionTracker,
+		private readonly host: McpPlannerHost,
+		private readonly navigation: McpNavigation,
 	)
 	{
-		bus.register(...this.commands());
+		// Before a version's plans are loaded the store is empty and writes are dropped, so nothing here can run.
+		bus.register(...this.commands().map(command => ({...command, gates: ['plans_loaded' as const]})));
 	}
 
 	private commands(): McpCommand[]
@@ -71,10 +76,14 @@ export class PlanCommands
 			{
 				name: 'plans.open',
 				kind: 'mutation',
-				summary: 'Make a plan the active plan (shared and read-only plans open read-only).',
-				run: args => {
+				summary: 'Make a plan the active plan and show it in the planner (shared and read-only plans open read-only).',
+				run: async args => {
 					const plan = this.requirePlan(args.string('planId'));
-					this.planManager.setActivePlan(plan.id);
+					if (this.host.isOpen() || this.planManager.isSharedPlan(plan.id)) {
+						this.planManager.setActivePlan(plan.id);
+					} else {
+						await this.navigation.openVersionPage('planner', null, plan.id);
+					}
 					return this.result([{kind: 'plan', id: plan.id, change: 'unchanged'}], {data: {readOnly: this.planManager.isReadOnlyPlan(plan.id)}});
 				},
 			},
@@ -87,7 +96,7 @@ export class PlanCommands
 					if (folderId !== null) {
 						this.requireOwnFolder(folderId);
 					}
-					const plan = this.planManager.createPlan(args.optionalString('name') ?? '', folderId);
+					const plan = this.planManager.createPlan((args.optionalString('name') ?? '').trim(), folderId);
 					return this.result([{kind: 'plan', id: plan.id, change: 'created'}]);
 				},
 			},
@@ -97,7 +106,7 @@ export class PlanCommands
 				summary: 'Rename a plan. Pass expectedRevision from plans.get to refuse the change if the plan was edited since.',
 				run: args => {
 					const plan = this.requireEditablePlan(args);
-					this.planManager.renamePlan(plan.id, args.string('name'));
+					this.planManager.renamePlan(plan.id, args.name('name'));
 					return this.result([{kind: 'plan', id: plan.id, change: 'updated'}]);
 				},
 			},
@@ -107,10 +116,13 @@ export class PlanCommands
 				summary: 'Clone a plan under the given name.',
 				run: args => {
 					const source = this.requirePlan(args.string('planId'));
-					const clone = this.planManager.clonePlan(source.id, args.string('name'));
+					const name = args.name('name');
+					const clone = this.planManager.clonePlan(source.id, name);
 					if (clone === null) {
-						throw new McpError('failed', 'The plan could not be cloned.');
+						throw new McpError('failed', 'The plan could not be cloned. Shared and read-only plans have to be copied in the app.');
 					}
+					// clonePlan prefixes "Clone: " for the UI's menu action; here the client chose the name.
+					this.planManager.renamePlan(clone.id, name);
 					return this.result([{kind: 'plan', id: clone.id, change: 'created'}]);
 				},
 			},
@@ -134,7 +146,7 @@ export class PlanCommands
 					if (parentId !== null) {
 						this.requireOwnFolder(parentId);
 					}
-					const folder = this.planManager.createFolder(args.string('name'), parentId);
+					const folder = this.planManager.createFolder(args.name('name'), parentId);
 					return this.result([{kind: 'folder', id: folder.id, change: 'created'}]);
 				},
 			},
@@ -145,7 +157,7 @@ export class PlanCommands
 				run: args => {
 					const folder = this.requireOwnFolder(args.string('folderId'));
 					this.revisions.assertFresh('folder', folder.id, args.optionalString('expectedRevision'));
-					this.planManager.renameFolder(folder.id, args.string('name'));
+					this.planManager.renameFolder(folder.id, args.name('name'));
 					return this.result([{kind: 'folder', id: folder.id, change: 'updated'}]);
 				},
 			},
@@ -178,7 +190,7 @@ export class PlanCommands
 	{
 		const plan = this.requirePlan(args.string('planId'));
 		if (this.planManager.isReadOnlyPlan(plan.id)) {
-			throw new McpError('read_only', 'This plan is shared or read-only.', 'plans.import_copy');
+			throw new McpError('read_only', 'This plan is shared or read-only. Make an editable copy of it in the app first.');
 		}
 		this.revisions.assertFresh('plan', plan.id, args.optionalString('expectedRevision'));
 		return plan;

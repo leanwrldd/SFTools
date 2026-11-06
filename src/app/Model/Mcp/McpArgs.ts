@@ -26,6 +26,16 @@ export class McpArgs
 		return value;
 	}
 
+	/** A display name: trimmed, and refused when nothing is left. */
+	public name(key: string): string
+	{
+		const value = this.string(key).trim();
+		if (value === '') {
+			throw new McpError('invalid_arguments', `"${key}" must not be blank.`);
+		}
+		return value;
+	}
+
 	public optionalString(key: string): string | null
 	{
 		const value = this.record[key];
@@ -54,6 +64,40 @@ export class McpArgs
 		const value = this.record[key];
 		if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || item === '')) {
 			throw new McpError('invalid_arguments', `"${key}" must be a non-empty array of strings.`);
+		}
+		return value as string[];
+	}
+
+	/** An array of objects, each read through its own McpArgs. Absent means empty when `optional`, otherwise an error. */
+	public objectList(key: string, optional = false): McpArgs[]
+	{
+		const value = this.record[key];
+		if (value === undefined || value === null) {
+			if (optional) {
+				return [];
+			}
+			throw new McpError('invalid_arguments', `"${key}" must be an array.`);
+		}
+		if (!Array.isArray(value)) {
+			throw new McpError('invalid_arguments', `"${key}" must be an array.`);
+		}
+		return value.map((entry, index) => {
+			if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+				throw new McpError('invalid_arguments', `"${key}[${index}]" must be an object.`);
+			}
+			return new McpArgs(entry);
+		});
+	}
+
+	/** Like stringList, but the array may be absent or empty. */
+	public optionalStringList(key: string): string[]
+	{
+		const value = this.record[key];
+		if (value === undefined || value === null) {
+			return [];
+		}
+		if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item === '')) {
+			throw new McpError('invalid_arguments', `"${key}" must be an array of strings.`);
 		}
 		return value as string[];
 	}

@@ -69,7 +69,7 @@ import {Graph} from '@src/Model/Planner/Graph/Graph';
 import {GraphComposer} from '@src/Model/Planner/Graph/GraphComposer';
 import {GraphEdge} from '@src/Model/Planner/Graph/GraphEdge';
 import {GraphLayoutResolver} from '@src/Model/Planner/GraphLayoutResolver';
-import {GroupingModeResolver} from '@src/Model/Planner/GroupingModeResolver';
+import {PlanCalculationKey} from '@src/Model/Planner/PlanCalculationKey';
 import {GraphMetrics} from '@src/Model/Planner/Graph/GraphMetrics';
 import {GraphPoint} from '@src/Model/Planner/Graph/GraphPoint';
 import {GraphDirection} from '@src/Model/Planner/GraphDirection';
@@ -192,7 +192,7 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 		private readonly versionManager: VersionManager,
 		private readonly enabledRecipes: EnabledRecipesResolver,
 		private readonly graphLayout: GraphLayoutResolver,
-		private readonly groupingModes: GroupingModeResolver,
+		private readonly calculationKey: PlanCalculationKey,
 		private readonly subplanResolver: SubplanIOResolver,
 		private readonly subplanScaler: SubplanScaler,
 		private readonly subplanInliner: SubplanInliner,
@@ -489,27 +489,10 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 		this.subscription.add(
 			toObservable(computed(() => {
 				const plan = this.planManager.activePlan();
-				const defaults = this.settings.planDefaults();
 				return plan === null ? null : {
 					id: plan.id,
 					mode: this.modeOf(plan),
-					requestsKey: JSON.stringify({
-						// powerUnit is display-only - must not re-solve.
-						requests: plan.requests.map(r => ({itemClassName: r.itemClassName, ratePerMinute: r.ratePerMinute, mode: r.mode})),
-						inputs: plan.inputs,
-						recipes: plan.settings.enabledRecipes ?? [defaults.alternateRecipes, defaults.conversionRecipes],
-						machines: plan.settings.disabledMachines,
-						limits: [plan.settings.resourceLimits, plan.settings.disabledResources, plan.settings.resourceWeightMode, plan.settings.resourceWeights],
-						fuels: plan.settings.enabledFuels,
-						byproducts: plan.settings.disabledByproducts,
-						sinkable: plan.settings.sinkableItems,
-						factoryPower: [plan.settings.producePowerForFactory, plan.settings.excessPowerPercent],
-						extraPower: [plan.settings.geothermalGenerators, plan.settings.alienPowerAugmenters],
-						optimisation: plan.settings.optimisation,
-						sloops: [plan.settings.maxSloops, plan.settings.sloopAccuracy],
-						clocks: [plan.settings.defaultClockSpeed, plan.settings.recipeClockSpeeds, plan.settings.machineClockSpeeds, plan.settings.generatorClockSpeeds],
-						grouping: this.groupingModes.resolve(plan.settings),
-					}),
+					requestsKey: this.calculationKey.of(plan),
 				};
 			})).pipe(
 				pairwise(),
@@ -2081,6 +2064,7 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 
 		if (validRequests.length === 0 && lockedNodes.length === 0) return;
 
+		const endRun = this.actions.beginCalculationRun();
 		let result$;
 		try {
 			result$ = this.productionSolver.solve({...plan, requests: validRequests}, lockedNodes);
@@ -2090,16 +2074,25 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 			} else {
 				this.actions.setSolveError('error', 'Could not start the calculation: ' + String(err) + '. This is a bug, please tell me on Discord.');
 			}
+			endRun();
 			return;
 		}
 
 		this.actions.setCalculating(true);
 		this.actions.setSolveError(null);
-		this.calcSubscription = result$.pipe(finalize(() => this.actions.setCalculating(false))).subscribe({
+		// The solver stream ends before the graph is drawn or the failure explained; whichever takes over ends the run.
+		let handedOver = false;
+		this.calcSubscription = result$.pipe(finalize(() => {
+			this.actions.setCalculating(false);
+			if (!handedOver) {
+				endRun();
+			}
+		})).subscribe({
 			next: result => {
+				handedOver = true;
 				if (result.status !== 'Optimal') {
 					this.actions.setSolveError('no solution');
-					this.explainSolveFailure({...plan, requests: validRequests}, lockedNodes);
+					this.explainSolveFailure({...plan, requests: validRequests}, lockedNodes, endRun);
 					return;
 				}
 				this.history.push(this.snapshotOf(plan));
@@ -2110,7 +2103,7 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 					this.planManager.setAchievedMaximums(plan.id, result.achievedMaximums);
 				}).catch(err => {
 					this.actions.setSolveError('error', 'Could not draw the graph: ' + String(err) + '. This is a bug, please tell me on Discord.');
-				});
+				}).finally(endRun);
 			},
 			error: err => {
 				if (err instanceof SolveSettingsError) {
@@ -2130,10 +2123,10 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 		this.calcSubscription = null;
 	}
 
-	private explainSolveFailure(plan: Plan, lockedNodes: Node[]): void
+	private explainSolveFailure(plan: Plan, lockedNodes: Node[], onDone: () => void): void
 	{
 		this.subscription.add(
-			this.productionSolver.diagnoseFailure(plan, lockedNodes).subscribe(message => {
+			this.productionSolver.diagnoseFailure(plan, lockedNodes).pipe(finalize(onDone)).subscribe(message => {
 				const hint = lockedNodes.length > 0 ? ' Locked nodes also limit what is possible.' : '';
 				this.actions.setSolveError('no solution', message + hint);
 			}),

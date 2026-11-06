@@ -18,9 +18,10 @@ export interface ToolDefinition
 }
 
 const planId = z.string().min(1).describe('Plan id from plans_list.');
-const folderId = z.string().min(1).describe('Folder id from plans_list.');
+const planIdOptional = z.string().min(1).optional().describe('Plan id from plans_list. Defaults to the plan open in the app.');
+const folderId =z.string().min(1).describe('Folder id from plans_list.');
 const expectedRevision = z.string().optional().describe(
-	'Revision token from plans_list / plans_get. If the plan or folder was edited since, the change is refused with stale_target.',
+	'Revision token from plans_list / plans_get or the last change. If the plan or folder was edited since, the change is refused with stale_target. Calculating does not change it.',
 );
 const confirm = z.boolean().describe('Must be true: this action cannot be undone from here.');
 
@@ -34,6 +35,21 @@ export const TOOLS: readonly ToolDefinition[] = [
 	{
 		name: 'app_get_capabilities', command: 'app.get_capabilities', title: 'Get capabilities', readOnly: true,
 		description: 'Every app command with the reason it cannot run right now (signed out, planner not open, browser only).',
+		shape: {},
+	},
+	{
+		name: 'app_navigate', command: 'app.navigate', title: 'Go to a page', readOnly: false,
+		description: 'Go to a page of the app and wait until it is usable. Plans and game data belong to a game version, so use target "planner" first when no version is open. Planner and map take an optional versionSlug from versions_list; without one the app reuses the open or last used version.',
+		shape: {
+			target: z.enum(['home', 'planner', 'map', 'settings', 'account', 'mods', 'mod_editor', 'help', 'about', 'create_version']),
+			versionSlug: z.string().min(1).optional().describe('Game version to open (planner and map only).'),
+			planId: z.string().min(1).optional().describe('Plan to show (planner only).'),
+		},
+		timeoutMs: 60 * 1000,
+	},
+	{
+		name: 'versions_list', command: 'versions.list', title: 'List game versions', readOnly: true,
+		description: 'The game versions available, with the slug app_navigate takes, and which one is open.',
 		shape: {},
 	},
 	{
@@ -58,8 +74,9 @@ export const TOOLS: readonly ToolDefinition[] = [
 	},
 	{
 		name: 'plans_open', command: 'plans.open', title: 'Open plan', readOnly: false,
-		description: 'Make a plan the active plan. Shared and read-only plans open read-only.',
+		description: 'Make a plan the active plan and show it in the planner, opening the planner if needed. Shared and read-only plans open read-only.',
 		shape: {planId},
+		timeoutMs: 60 * 1000,
 	},
 	{
 		name: 'plans_create', command: 'plans.create', title: 'Create plan', readOnly: false,
@@ -73,7 +90,7 @@ export const TOOLS: readonly ToolDefinition[] = [
 	},
 	{
 		name: 'plans_clone', command: 'plans.clone', title: 'Clone plan', readOnly: false,
-		description: 'Clone a plan under a new name.',
+		description: 'Clone a plan under exactly the given name.',
 		shape: {planId, name: z.string().min(1)},
 	},
 	{
@@ -95,6 +112,79 @@ export const TOOLS: readonly ToolDefinition[] = [
 		name: 'folders_delete', command: 'folders.delete', title: 'Delete folder', readOnly: false, destructive: true,
 		description: 'Delete a folder with everything in it.',
 		shape: {folderId, confirm, expectedRevision},
+	},
+	{
+		name: 'data_search_items', command: 'data.search_items', title: 'Search items', readOnly: true,
+		description: 'Find items by name in the active game version and get the classNames that requests and inputs need. Also lists the special power and sink-points targets.',
+		shape: {
+			query: z.string().describe('Part of an item name, for example "iron plate". Empty returns the first items.'),
+			producibleOnly: z.boolean().optional().describe('Only items a factory can make (what the Production tab offers).'),
+			limit: z.number().int().min(1).max(100).optional(),
+		},
+	},
+	{
+		name: 'calculator_get_settings', command: 'calculator.get_settings', title: 'Get calculator settings', readOnly: true,
+		description: 'Settings in force for a plan: requests, inputs, calculation mode, full settings, recipe selection summary, and which settings groups its folder fixes. Defaults to the open plan.',
+		shape: {planId: planIdOptional},
+	},
+	{
+		name: 'calculator_list_recipes', command: 'calculator.list_recipes', title: 'List recipes', readOnly: true,
+		description: 'Find recipes by name or product with enabled state, machines, ingredients and products. Use the classNames with calculator_set_recipes.',
+		shape: {
+			planId: planIdOptional,
+			query: z.string().optional(),
+			scope: z.enum(['all', 'alternate', 'standard']).optional(),
+			state: z.enum(['any', 'enabled', 'disabled']).optional(),
+			limit: z.number().int().min(1).max(200).optional(),
+		},
+	},
+	{
+		name: 'calculator_set_targets', command: 'calculator.set_targets', title: 'Set production requests', readOnly: false,
+		description: 'Replace the production requests of a plan. Each request is an item className (or "power" / "sink_points") with ratePerMinute, or mode "maximise". Power rates are megawatts. Only one kind of target can be maximised. Settings are not recalculated here; read the result for what happens next.',
+		shape: {
+			planId: planIdOptional,
+			expectedRevision,
+			requests: z.array(z.object({
+				item: z.string().min(1).describe('Item className from data_search_items, or "power" / "sink_points".'),
+				ratePerMinute: z.number().min(0).optional().describe('Items per minute (megawatts for power). Required unless mode is maximise.'),
+				mode: z.enum(['rate', 'maximise']).optional(),
+				powerUnit: z.enum(['MW', 'GW', 'TW']).optional().describe('Display unit for the power target only; ratePerMinute stays in MW.'),
+			})),
+		},
+	},
+	{
+		name: 'calculator_set_inputs', command: 'calculator.set_inputs', title: 'Set supplied inputs', readOnly: false,
+		description: 'Replace the inputs of a plan: items you already supply, with amount per minute and an optional weight (defaults match the Input tab).',
+		shape: {
+			planId: planIdOptional,
+			expectedRevision,
+			inputs: z.array(z.object({
+				item: z.string().min(1),
+				amount: z.number().min(0),
+				weight: z.number().min(0).optional(),
+			})),
+		},
+	},
+	{
+		name: 'calculator_set_recipes', command: 'calculator.set_recipes', title: 'Set enabled recipes', readOnly: false,
+		description: 'Enable or disable recipes by className and/or scope (alternate, standard, conversion), replace the enabled set with set_only, or reset_to_defaults. Refused when the plan folder fixes the recipe settings.',
+		shape: {
+			planId: planIdOptional,
+			expectedRevision,
+			action: z.enum(['enable', 'disable', 'set_only', 'reset_to_defaults']),
+			recipes: z.array(z.string().min(1)).optional().describe('Recipe classNames from calculator_list_recipes.'),
+			scope: z.enum(['alternate', 'standard', 'conversion']).optional(),
+		},
+	},
+	{
+		name: 'results_get_summary', command: 'results.get_summary', title: 'Get result summary', readOnly: true,
+		description: 'Totals of the last successful calculation (products, resources used, power, machines, build cost). Check resultsStale: when true the numbers no longer match the plan, and staleReason and lastCalculationError say why.',
+		shape: {planId: planIdOptional},
+	},
+	{
+		name: 'results_get_breakdown', command: 'results.get_breakdown', title: 'Get result breakdown', readOnly: true,
+		description: 'Detailed rows of one result section of the last successful calculation: items (sources and targets), power, build_cost, resources, production or recipes. Check resultsStale as for results_get_summary.',
+		shape: {planId: planIdOptional, section: z.enum(['items', 'power', 'build_cost', 'resources', 'production', 'recipes'])},
 	},
 	{
 		name: 'calculator_calculate', command: 'calculator.calculate', title: 'Calculate plan', readOnly: false,

@@ -119,6 +119,50 @@ export class PlannerActionsService
 
 	public readonly solveErrorIsSettingsProblem: Signal<boolean> = computed(() => this.solveErrorSignal() === PlannerActionsService.SETTINGS_PROBLEM);
 
+	private calculationRunsStartedCount = 0;
+	private calculationRunsPending = 0;
+	private calculationIdleWaiters: (() => void)[] = [];
+
+	/** Counts every attempt the planner accepted, including one that fails on its settings before the solver starts. */
+	public get calculationRunsStarted(): number
+	{
+		return this.calculationRunsStartedCount;
+	}
+
+	/** isCalculating ends with the solver; a run stays pending until its graph is drawn or its failure is explained. */
+	public get hasPendingCalculationRun(): boolean
+	{
+		return this.calculationRunsPending > 0;
+	}
+
+	/** Returns the function that ends the run; calling it again does nothing. */
+	public beginCalculationRun(): () => void
+	{
+		this.calculationRunsStartedCount++;
+		this.calculationRunsPending++;
+		let ended = false;
+		return () => {
+			if (ended) {
+				return;
+			}
+			ended = true;
+			this.calculationRunsPending--;
+			if (this.calculationRunsPending === 0) {
+				const waiters = this.calculationIdleWaiters;
+				this.calculationIdleWaiters = [];
+				waiters.forEach(resolve => resolve());
+			}
+		};
+	}
+
+	public whenCalculationRunsEnd(): Promise<void>
+	{
+		if (this.calculationRunsPending === 0) {
+			return Promise.resolve();
+		}
+		return new Promise(resolve => this.calculationIdleWaiters.push(resolve));
+	}
+
 	public requestCalculate(): void
 	{
 		this.calculateSubject.next();

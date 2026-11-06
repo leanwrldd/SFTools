@@ -38,7 +38,7 @@ export class PlannerCommands
 					const operationId = this.operations.start('calculate', () => this.host.cancelCalculation());
 					try {
 						const outcome = await this.host.calculate(planId);
-						const state = outcome.status === 'optimal' ? 'succeeded' : 'failed';
+						const state = outcome.status === 'optimal' ? 'succeeded' : outcome.status === 'cancelled' ? 'cancelled' : 'failed';
 						this.operations.finish(operationId, state, outcome.message, outcome);
 						this.revisions.revisionOf('plan', outcome.planId);
 						return this.mutation(outcome.planId, outcome.status === 'optimal', outcome.status === 'optimal' ? [] : [outcome.message ?? outcome.status], {

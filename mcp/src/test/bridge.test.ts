@@ -105,6 +105,21 @@ describe('adapter bridge', () => {
 		await new Promise(resolve => bridge.once('disconnected', resolve));
 	});
 
+	it('refuses a navigation target the app has no page for', async () => {
+		let calls = 0;
+		const app = await fakeApp(port, () => {
+			calls++;
+			return {ok: true, kind: 'mutation', changed: [], warnings: [], resultsStale: false, needsRecalculation: false, revisions: {}};
+		});
+		const client = await connectClient(bridge);
+		const outcome = await client.callTool({name: 'app_navigate', arguments: {target: 'nowhere'}}).catch((error: unknown) => error);
+		const rejected = outcome instanceof Error || (outcome as {isError?: boolean}).isError === true;
+		assert.equal(rejected, true);
+		assert.equal(calls, 0);
+		app.close();
+		await new Promise(resolve => bridge.once('disconnected', resolve));
+	});
+
 	it('refuses invalid arguments before they reach the app', async () => {
 		let calls = 0;
 		const app = await fakeApp(port, () => {
@@ -116,6 +131,35 @@ describe('adapter bridge', () => {
 		const rejected = result instanceof Error || (result as {isError?: boolean}).isError === true;
 		assert.equal(rejected, true);
 		assert.equal(calls, 0);
+		app.close();
+		await new Promise(resolve => bridge.once('disconnected', resolve));
+	});
+
+	it('validates request shapes before they reach the app', async () => {
+		let calls = 0;
+		const app = await fakeApp(port, () => {
+			calls++;
+			return {ok: true, kind: 'mutation', changed: [], warnings: [], resultsStale: false, needsRecalculation: false, revisions: {}};
+		});
+		const client = await connectClient(bridge);
+		const bad = [
+			{requests: [{item: 'Desc_IronPlate_C', ratePerMinute: -1}]},
+			{requests: [{item: 'Desc_IronPlate_C', mode: 'sideways'}]},
+			{requests: [{ratePerMinute: 5}]},
+			{requests: 'iron'},
+		];
+		for (const args of bad) {
+			const outcome = await client.callTool({name: 'calculator_set_targets', arguments: args}).catch((error: unknown) => error);
+			assert.equal(outcome instanceof Error || (outcome as {isError?: boolean}).isError === true, true);
+		}
+		assert.equal(calls, 0);
+
+		const good = await client.callTool({
+			name: 'calculator_set_targets',
+			arguments: {requests: [{item: 'power', ratePerMinute: 100, powerUnit: 'MW'}, {item: 'Desc_IronPlate_C', mode: 'maximise'}]},
+		});
+		assert.notEqual(good.isError, true);
+		assert.equal(calls, 1);
 		app.close();
 		await new Promise(resolve => bridge.once('disconnected', resolve));
 	});
