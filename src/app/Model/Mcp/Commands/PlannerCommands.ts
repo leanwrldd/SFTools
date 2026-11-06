@@ -34,7 +34,7 @@ export class PlannerCommands
 				summary: 'Run the solver on the open plan and wait for its outcome (optimal, no solution, settings problem, error, timeout).',
 				gates: ['planner_open'],
 				run: async args => {
-					const planId = args.optionalString('planId');
+					const planId = args.string('planId');
 					const operationId = this.operations.start('calculate', () => this.host.cancelCalculation());
 					try {
 						const outcome = await this.host.calculate(planId);
@@ -58,7 +58,7 @@ export class PlannerCommands
 				summary: 'Delete nodes from the open plan graph. Requires confirm: true. Reports whether the graph changed; nodes may be refused (locks, subplan confirmation).',
 				gates: ['planner_open'],
 				run: async args => {
-					const planId = args.optionalString('planId');
+					const planId = args.string('planId');
 					const nodeIds = args.stringList('nodeIds');
 					args.requireConfirm('Deleting nodes');
 					const outcome = await this.host.dispatch(planId, actions => actions.requestNodeDelete(nodeIds));

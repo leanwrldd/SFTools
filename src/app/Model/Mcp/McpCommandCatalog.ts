@@ -1,6 +1,7 @@
 import {Injectable} from '@angular/core';
 import {AppCommands} from '@src/Model/Mcp/Commands/AppCommands';
 import {CalculatorCommands} from '@src/Model/Mcp/Commands/CalculatorCommands';
+import {CalculatorSettingsCommands} from '@src/Model/Mcp/Commands/CalculatorSettingsCommands';
 import {DataCommands} from '@src/Model/Mcp/Commands/DataCommands';
 import {ResultCommands} from '@src/Model/Mcp/Commands/ResultCommands';
 import {PlanCommands} from '@src/Model/Mcp/Commands/PlanCommands';
@@ -22,6 +23,7 @@ export class McpCommandCatalog
 		_plans: PlanCommands,
 		_planner: PlannerCommands,
 		_calculator: CalculatorCommands,
+		_calculatorSettings: CalculatorSettingsCommands,
 		_results: ResultCommands,
 		_data: DataCommands,
 	)

@@ -3,6 +3,8 @@ import {McpPlannerHost} from '@src/Model/Mcp/McpPlannerHost';
 import {McpMutationResult} from '@src/Model/Mcp/McpResult';
 import {McpResultFreshness} from '@src/Model/Mcp/McpResultFreshness';
 import {McpRevisionTracker} from '@src/Model/Mcp/McpRevisionTracker';
+import {Plan} from '@src/Model/Planner/Plan';
+import {PlanCalculationKey} from '@src/Model/Planner/PlanCalculationKey';
 import {PlanManager} from '@src/Model/Planner/PlanManager';
 
 /**
@@ -19,11 +21,13 @@ export class McpPlanReporter
 		private readonly host: McpPlannerHost,
 		private readonly revisions: McpRevisionTracker,
 		private readonly freshness: McpResultFreshness,
+		private readonly calculationKey: PlanCalculationKey,
 	)
 	{
 	}
 
-	public settingsChanged(planId: string, data: Record<string, unknown> = {}): McpMutationResult
+	/** `previous` is the plan before the change: the planner only recalculates by itself when something the solver reads actually changed. */
+	public settingsChanged(planId: string, data: Record<string, unknown>, previous: Plan): McpMutationResult
 	{
 		const plan = this.planManager.findPlan(planId);
 		const revision = this.revisions.revisionOf('plan', planId);
@@ -47,7 +51,7 @@ export class McpPlanReporter
 			}
 		} else if (hasGraph && !stale) {
 			recalculation = 'not_needed';
-		} else if (mode === 'automatic' && shown && !graphDirty) {
+		} else if (mode === 'automatic' && shown && !graphDirty && this.calculationKey.of(previous) !== this.calculationKey.of(plan)) {
 			recalculation = 'scheduled';
 		} else {
 			recalculation = 'not_scheduled';
@@ -55,8 +59,10 @@ export class McpPlanReporter
 				warnings.push(`Calculation mode is "${mode}", so the graph is not recalculated automatically. Call calculator_calculate.`);
 			} else if (graphDirty) {
 				warnings.push('The graph was edited by hand, so automatic mode is paused. Call calculator_calculate to recalculate.');
-			} else {
+			} else if (!shown) {
 				warnings.push('This plan is not showing in the planner, so nothing recalculates it. Open it with plans_open.');
+			} else {
+				warnings.push('This change does not trigger a recalculation by itself, and the results are out of date. Call calculator_calculate.');
 			}
 		}
 

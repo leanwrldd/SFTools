@@ -99,7 +99,7 @@ export class CalculatorCommands
 				run: args => {
 					const plan = this.targets.plan(args);
 					const data = this.targets.data();
-					return {ok: true, kind: 'query', data: this.listRecipes(plan, data, args)};
+					return {ok: true, kind: 'query', data: {planId: plan.id, ...this.listRecipes(plan, data, args)}};
 				},
 			},
 			{
@@ -111,7 +111,7 @@ export class CalculatorCommands
 					const data = this.targets.data();
 					const requests = this.parseRequests(args, data);
 					this.planManager.setRequests(plan.id, requests);
-					return this.reporter.settingsChanged(plan.id, {requests});
+					return this.reporter.settingsChanged(plan.id, {requests}, plan);
 				},
 			},
 			{
@@ -123,7 +123,7 @@ export class CalculatorCommands
 					const data = this.targets.data();
 					const inputs = this.parseInputs(args, plan, data);
 					this.planManager.setInputs(plan.id, inputs);
-					return this.reporter.settingsChanged(plan.id, {inputs});
+					return this.reporter.settingsChanged(plan.id, {inputs}, plan);
 				},
 			},
 			{
@@ -137,13 +137,13 @@ export class CalculatorCommands
 					if (action === 'reset_to_defaults') {
 						const {enabledRecipes: _unused, ...rest} = plan.settings;
 						this.planManager.setSettings(plan.id, rest);
-						return this.reporter.settingsChanged(plan.id, {recipes: this.recipeSummary(this.reload(plan.id), data)});
+						return this.reporter.settingsChanged(plan.id, {recipes: this.recipeSummary(this.reload(plan.id), data)}, plan);
 					}
 					const selected = this.selectRecipes(args, data);
 					const enabled = action === 'set_only' ? new Set<string>() : this.recipeResolver.resolve(plan.settings, data);
 					selected.forEach(className => action === 'disable' ? enabled.delete(className) : enabled.add(className));
 					this.planManager.setSettings(plan.id, {...plan.settings, enabledRecipes: [...enabled].sort()});
-					return this.reporter.settingsChanged(plan.id, {recipes: this.recipeSummary(this.reload(plan.id), data)});
+					return this.reporter.settingsChanged(plan.id, {recipes: this.recipeSummary(this.reload(plan.id), data)}, plan);
 				},
 			},
 		];
@@ -281,9 +281,11 @@ export class CalculatorCommands
 			}
 			const conversionNames = new Set(this.conversions.resolve(data).map(recipe => recipe.className));
 			for (const recipe of known.values()) {
+				// Conversion recipes are their own scope: most are not flagged alternate, so "standard" would turn them on too.
+				const isConversion = conversionNames.has(recipe.className);
 				const matches = scope === 'conversion'
-					? conversionNames.has(recipe.className)
-					: scope === 'alternate' ? recipe.alternate : !recipe.alternate;
+					? isConversion
+					: !isConversion && (scope === 'alternate') === recipe.alternate;
 				if (matches) {
 					selected.add(recipe.className);
 				}

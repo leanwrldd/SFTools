@@ -17,6 +17,21 @@ export class McpArgs
 		}
 	}
 
+	/** Whether the client sent this key; null counts, because it can mean "remove". */
+	public has(key: string): boolean
+	{
+		return this.record[key] !== undefined;
+	}
+
+	public object(key: string): McpArgs
+	{
+		const value = this.record[key];
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+			throw new McpError('invalid_arguments', `"${key}" must be an object.`);
+		}
+		return new McpArgs(value);
+	}
+
 	public string(key: string): string
 	{
 		const value = this.record[key];

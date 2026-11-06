@@ -11,7 +11,7 @@ import {SettingsGroups} from '@src/Model/Planner/SettingsGroups';
 
 /**
  * Resolves which plan a command acts on and enforces the rules the UI enforces: the plan exists, is not read-only, is unchanged since
- * the client read it, and its folder does not fix the settings group being changed. A command that names no plan acts on the open one.
+ * the client read it, and its folder does not fix the settings group being changed. A read that names no plan acts on the open one.
  */
 @Injectable({providedIn: 'root'})
 export class McpPlanTargets
@@ -39,9 +39,12 @@ export class McpPlanTargets
 		return plan;
 	}
 
-	/** Plan that may be changed now. */
+	/** Plan that may be changed now. Always named: the open plan can change between two commands, and a change must not follow it. */
 	public editable(args: McpArgs): Plan
 	{
+		if (!args.has('planId')) {
+			throw new McpError('invalid_arguments', '"planId" is required to change a plan, so the change cannot land on another plan if the open one changes.', 'app.get_context');
+		}
 		const plan = this.plan(args);
 		if (this.planManager.isReadOnlyPlan(plan.id)) {
 			throw new McpError('read_only', 'This plan is shared or read-only. Make an editable copy of it in the app first.');

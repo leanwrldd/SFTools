@@ -47,4 +47,5 @@ Serves `http://127.0.0.1:47814/mcp`, bearer token from `~/.sftools-mcp/http-toke
 
 - The adapter binds `127.0.0.1` only. The app proves the bridge token before any command is accepted.
 - Destructive tools need `confirm: true`; plan and folder edits can carry `expectedRevision` so a change you made by hand in between is not overwritten.
+- Tools that change a plan's settings or graph require `planId`, so a change cannot land on another plan if the open one changes mid-conversation. Reads may leave it out and report which plan they read.
 - Environment overrides: `SFTOOLS_MCP_BRIDGE_TOKEN`, `SFTOOLS_MCP_HTTP_TOKEN`, `SFTOOLS_MCP_BRIDGE_PORT`, `SFTOOLS_MCP_HTTP_PORT`.

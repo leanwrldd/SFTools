@@ -105,6 +105,23 @@ describe('adapter bridge', () => {
 		await new Promise(resolve => bridge.once('disconnected', resolve));
 	});
 
+	it('passes null through so a clock speed or resource limit can be removed', async () => {
+		const seen: unknown[] = [];
+		const app = await fakeApp(port, (_name, args) => {
+			seen.push(args);
+			return {ok: true, kind: 'mutation', changed: [], warnings: [], resultsStale: false, needsRecalculation: false, revisions: {}};
+		});
+		const client = await connectClient(bridge);
+		await client.callTool({name: 'calculator_set_clock_speeds', arguments: {planId: 'p1', recipes: [{recipe: 'r', clockSpeed: null}]}});
+		await client.callTool({name: 'calculator_set_resources', arguments: {planId: 'p1', resources: [{item: 'i', limit: null}]}});
+		assert.deepEqual(seen, [{planId: 'p1', recipes: [{recipe: 'r', clockSpeed: null}]}, {planId: 'p1', resources: [{item: 'i', limit: null}]}]);
+		const tooFast = await client.callTool({name: 'calculator_set_clock_speeds', arguments: {planId: 'p1', defaultClockSpeed: 300}}).catch((error: unknown) => error);
+		assert.equal(tooFast instanceof Error || (tooFast as {isError?: boolean}).isError === true, true);
+		assert.equal(seen.length, 2);
+		app.close();
+		await new Promise(resolve => bridge.once('disconnected', resolve));
+	});
+
 	it('refuses a navigation target the app has no page for', async () => {
 		let calls = 0;
 		const app = await fakeApp(port, () => {
@@ -149,14 +166,14 @@ describe('adapter bridge', () => {
 			{requests: 'iron'},
 		];
 		for (const args of bad) {
-			const outcome = await client.callTool({name: 'calculator_set_targets', arguments: args}).catch((error: unknown) => error);
+			const outcome = await client.callTool({name: 'calculator_set_targets', arguments: {planId: 'p1', ...args}}).catch((error: unknown) => error);
 			assert.equal(outcome instanceof Error || (outcome as {isError?: boolean}).isError === true, true);
 		}
 		assert.equal(calls, 0);
 
 		const good = await client.callTool({
 			name: 'calculator_set_targets',
-			arguments: {requests: [{item: 'power', ratePerMinute: 100, powerUnit: 'MW'}, {item: 'Desc_IronPlate_C', mode: 'maximise'}]},
+			arguments: {planId: 'p1', requests: [{item: 'power', ratePerMinute: 100, powerUnit: 'MW'}, {item: 'Desc_IronPlate_C', mode: 'maximise'}]},
 		});
 		assert.notEqual(good.isError, true);
 		assert.equal(calls, 1);
