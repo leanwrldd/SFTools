@@ -29,7 +29,7 @@ Add to `claude_desktop_config.json`:
 	"mcpServers": {
 		"satisfactory-tools": {
 			"command": "node",
-			"args": ["C:\\Users\\latif\\Documents\\SFTools\\mcp\\dist\\index.js", "--stdio"]
+			"args": ["C:\\path\\to\\SFTools\\mcp\\dist\\index.js", "--stdio"]
 		}
 	}
 }
