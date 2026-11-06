@@ -1,0 +1,30 @@
+{
+	"name": "sftools-mcp",
+	"version": "0.1.0",
+	"private": true,
+	"description": "MCP server for the Satisfactory Tools desktop app: speaks MCP to Claude/ChatGPT and relays commands to the open app over a loopback WebSocket.",
+	"type": "module",
+	"bin": {
+		"sftools-mcp": "dist/index.js"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"start:stdio": "node dist/index.js --stdio",
+		"start:http": "node dist/index.js --http",
+		"test": "tsc -p tsconfig.json && node --test dist/test/bridge.test.js"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.12.0",
+		"ws": "^8.18.0",
+		"zod": "^3.24.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@types/ws": "^8.5.0",
+		"typescript": "^5.6.0"
+	}
+}

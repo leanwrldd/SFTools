@@ -10,6 +10,7 @@ import {AnalyticsService} from '@src/Model/Analytics/AnalyticsService';
 import {DesktopIntegrationService} from '@src/Model/Desktop/DesktopIntegrationService';
 import {ConnectivityService} from '@src/Model/Network/ConnectivityService';
 import {HotkeyService} from '@src/Model/Hotkeys/HotkeyService';
+import {McpBridgeService} from '@src/Model/Mcp/McpBridgeService';
 import {PageScrollbarService} from '@src/PageScrollbarService';
 
 @Component({
@@ -37,6 +38,8 @@ export class RootComponent
         public readonly connectivity: ConnectivityService,
         desktopIntegration: DesktopIntegrationService,
         pageScrollbar: PageScrollbarService,
+        // Injected for its side effect: connects to the local MCP adapter when the user turned the bridge on (desktop only).
+        mcpBridge: McpBridgeService,
     )
     {
         // A no-op on the website.

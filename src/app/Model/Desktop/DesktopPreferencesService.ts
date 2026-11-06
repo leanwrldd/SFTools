@@ -4,7 +4,7 @@ import {AppStorage} from '@src/Model/Storage/AppStorage';
 
 const STORAGE_KEY = 'sftools.desktop.preferences';
 
-const DEFAULTS: DesktopPreferences = {openLinks: true, checkForUpdates: true};
+const DEFAULTS: DesktopPreferences = {openLinks: true, checkForUpdates: true, mcpBridge: false, mcpPort: 47813, mcpToken: ''};
 
 @Injectable({providedIn: 'root'})
 export class DesktopPreferencesService

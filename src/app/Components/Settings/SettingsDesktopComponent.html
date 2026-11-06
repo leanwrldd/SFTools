@@ -93,6 +93,32 @@
 			}
 		</div>
 
+		<div class="subsection-title">AI assistants (MCP)</div>
+		<p class="mb-2">
+			Let Claude or ChatGPT work in this app through the local MCP adapter. It connects only to this computer, and only after you
+			paste the adapter's token here.
+		</p>
+		<div class="form-check mb-2">
+			<input class="form-check-input" type="checkbox" id="mcp-bridge" [ngModel]="preferences.preferences().mcpBridge" (ngModelChange)="preferences.update({mcpBridge: $event})"/>
+			<label class="form-check-label" for="mcp-bridge">Allow an AI assistant to control this app</label>
+		</div>
+		@if (preferences.preferences().mcpBridge) {
+			<div class="d-flex flex-wrap gap-2 mb-2">
+				<input type="number" class="form-control form-control-sm mcp-port" name="mcp-port" min="1" max="65535" aria-label="Adapter port"
+					[ngModel]="preferences.preferences().mcpPort" (ngModelChange)="setMcpPort($event)"/>
+				<input type="password" class="form-control form-control-sm flex-grow-1" name="mcp-token" placeholder="Adapter token" autocomplete="off"
+					aria-label="Adapter token" [ngModel]="preferences.preferences().mcpToken" (ngModelChange)="preferences.update({mcpToken: ($event ?? '').trim()})"/>
+			</div>
+			<p class="small mb-2">
+				@switch (mcp.status()) {
+					@case ('connected') { Connected to the adapter. }
+					@case ('rejected') { The adapter refused the token: {{ mcp.detail() }} }
+					@case ('connecting') { {{ mcp.detail() }} }
+					@default { Paste the token to connect. }
+				}
+			</p>
+		}
+
 		<div class="subsection-title">Your data</div>
 		<p class="mb-1">
 			Plans and settings made without signing in are saved in this folder. Back it up so you do not lose them.

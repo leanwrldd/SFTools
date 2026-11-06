@@ -40,6 +40,7 @@ import {NodeDoneRequest} from '@src/Components/Planner/NodeDoneRequest';
 import {NodeLockRequest} from '@src/Components/Planner/NodeLockRequest';
 import {NodeSplitRequest} from '@src/Components/Planner/NodeSplitRequest';
 import {PlannerActionsService} from '@src/Components/Planner/PlannerActionsService';
+import {McpPlannerHost} from '@src/Model/Mcp/McpPlannerHost';
 import {PlannerGraphService} from '@src/Components/Planner/PlannerGraphService';
 import {PlannerPanelContainerComponent} from '@src/Components/Planner/Panel/PlannerPanelContainerComponent';
 import {PanelLayoutService} from '@src/Components/Planner/Panel/PanelLayoutService';
@@ -214,8 +215,10 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 		private readonly planMeta: PlanMetaResolver,
 		private readonly route: ActivatedRoute,
 		private readonly router: Router,
+		private readonly mcpHost: McpPlannerHost,
 	)
 	{
+		mcpHost.attach(actions);
 		// A plan id that isn't the user's own may be someone else's plan link; the URL → state sync prompts if it turns out to be theirs.
 		const planIdParam = route.snapshot.paramMap.get('planId');
 		const ownPlan = planIdParam === null || planManager.plans().some(p => p.id === planIdParam);
@@ -734,6 +737,7 @@ export class PlannerComponent implements AfterViewInit, OnDestroy, HotkeyItemSou
 
 	public ngOnDestroy(): void
 	{
+		this.mcpHost.detach(this.actions);
 		this.cancelCalculation();
 		this.subscription.unsubscribe();
 		this.hotkeyRegistrations.forEach(registration => registration.unregister());

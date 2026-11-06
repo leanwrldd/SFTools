@@ -12,6 +12,7 @@ import {DesktopPreferencesService} from '@src/Model/Desktop/DesktopPreferencesSe
 import {DesktopUpdateService} from '@src/Model/Desktop/DesktopUpdateService';
 import {OfflineVersionsService} from '@src/Model/Desktop/OfflineVersionsService';
 import {WebLinkHandoffService} from '@src/Model/Desktop/WebLinkHandoffService';
+import {McpBridgeService} from '@src/Model/Mcp/McpBridgeService';
 import {ConnectivityService} from '@src/Model/Network/ConnectivityService';
 import {NotificationService} from '@src/Model/NotificationService';
 
@@ -38,6 +39,9 @@ import {NotificationService} from '@src/Model/NotificationService';
 		.data-path {
 			word-break: break-all;
 		}
+		.mcp-port {
+			max-width: 7rem;
+		}
 	`],
 })
 export class SettingsDesktopComponent
@@ -58,6 +62,7 @@ export class SettingsDesktopComponent
 		protected readonly offlineVersions: OfflineVersionsService,
 		protected readonly handoff: WebLinkHandoffService,
 		protected readonly connectivity: ConnectivityService,
+		protected readonly mcp: McpBridgeService,
 		private readonly integration: DesktopIntegrationService,
 		private readonly versionManager: VersionManager,
 		private readonly notifications: NotificationService,
@@ -66,6 +71,14 @@ export class SettingsDesktopComponent
 		this.desktop = bridge !== null;
 		if (bridge !== null) {
 			this.refreshCacheSize();
+		}
+	}
+
+	public setMcpPort(value: unknown): void
+	{
+		const port = Number(value);
+		if (Number.isInteger(port) && port >= 1 && port <= 65535) {
+			this.preferences.update({mcpPort: port});
 		}
 	}
 
